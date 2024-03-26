@@ -1,0 +1,5 @@
+# Default is 2504
+port = 2501
+# Default is "Me"
+name = "Jojo"
+peers = ["127.0.0.1:2504", "127.0.0.1:2505"]
