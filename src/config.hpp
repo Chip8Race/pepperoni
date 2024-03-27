@@ -23,7 +23,9 @@ struct Config {
         toml::parse_result toml_res = toml::parse_file(filename);
         if (toml_res.failed()) {
             fmt::print(
-                "Config loading failed {}", toml_res.error().description()
+                stderr,
+                "Config loading failed '{}'\n",
+                toml_res.error().description()
             );
             return std::nullopt;
         }
@@ -60,6 +62,7 @@ struct Config {
                             );
                         if (ec) {
                             fmt::print(
+                                stderr,
                                 "Failed parsing peer ip address: {}",
                                 splitted[0]
                             );
@@ -75,7 +78,9 @@ struct Config {
                         );
                         if (parse_port_result.ec != std::errc{}) {
                             fmt::print(
-                                "Failed parsing peer port: {}", splitted[1]
+                                stderr,
+                                "Failed parsing peer port: {}",
+                                splitted[1]
                             );
                             return;
                         }

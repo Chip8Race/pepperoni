@@ -24,10 +24,12 @@ public:
 
     void set_port(asio::ip::port_type port) { m_port = port; }
 
-    void on_event(const FrontendEvent& event) {
+    void on_event(const FrontendEvent& event) override {
         event.match(
             [this](const SendMessage& sm) {
-                m_connection_table.send_all(Packet::message(sm.message));
+                m_connection_table.send_all(
+                    Packet::message(std::string(sm.message))
+                );
             },
             [](const Terminate& t) {}
         );
@@ -58,8 +60,8 @@ public:
     awaitable<void> connect_to_peers() {
         // fmt::print(stderr, "connect_to_peers() IN\n");
 
-        if (m_initial_peers.peers.size() > 0) {
-            for (auto& peer : m_initial_peers.peers) {
+        if (m_initial_peers.size() > 0) {
+            for (auto& peer : m_initial_peers) {
                 // Create socket and connect
                 auto endpoint = tcp::endpoint(peer.address, peer.port);
                 auto socket = tcp::socket(m_io_context, endpoint.protocol());

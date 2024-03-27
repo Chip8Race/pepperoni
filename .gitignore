@@ -4,3 +4,4 @@ peers_*.txt
 old/
 .vscode/
 .cache/
+**.log

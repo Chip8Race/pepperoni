@@ -30,13 +30,14 @@ using namespace std::literals::chrono_literals;
 // #    def ine use_awaitable \
 //        asio::use_awaitable_t(__FILE__, __LINE__, __PRETTY_FUNCTION__)
 // #endif
-#include "msg.hpp"
+#include "message.hpp"
 
 #include <list>
 #include <optional>
 #include <string>
 
 using namespace asio;
+using namespace peppe;
 
 awaitable<void> timeout(steady_clock::duration duration) {
     asio::steady_timer timer(co_await this_coro::executor);
@@ -73,7 +74,7 @@ public:
     //     }
     // }
 
-    void send_all(Packet const& packet) {
+    void send_all(const Packet& packet) {
         for (auto* conn : m_connection_table) {
             packet.serialize(conn->socket);
         }

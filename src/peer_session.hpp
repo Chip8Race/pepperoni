@@ -1,8 +1,8 @@
 #pragma once
 
 #include "connection_table.hpp"
-#include "msg.hpp"
 #include "events.hpp"
+#include "message.hpp"
 
 #include <asio/use_future.hpp>
 #include <fmt/core.h>
@@ -10,35 +10,34 @@
 namespace peppe {
 
 class PeerSession : public std::enable_shared_from_this<PeerSession> {
-  public:
+public:
     // Ctor
     PeerSession(
         ConnectionTable& conn_table,
         tcp::socket socket,
-        std::optional<std::string>&& name = std::nullopt)
-        : m_connection {std::move(name), std::move(socket)}
-        , m_connection_table_ref(conn_table)
-    {
+        std::optional<std::string>&& name = std::nullopt
+    )
+        : m_connection{ std::move(name), std::move(socket) }
+        , m_connection_table_ref(conn_table) {
         m_connection_table_ref.add(&m_connection);
         const auto ep = m_connection.socket.remote_endpoint();
-        fmt::print(stderr, "Connected ({}:{})\n",
-            ep.address().to_string(),
-            ep.port());
-        EventManager::send(BackendEvent{
-            PeerConnected{}
-        });
+        fmt::print(
+            stderr, "Connected ({}:{})\n", ep.address().to_string(), ep.port()
+        );
+        EventManager::send(BackendEvent{ PeerConnected{} });
     }
 
     // Dtor
     ~PeerSession() {
         m_connection_table_ref.remove(&m_connection);
         const auto ep = m_connection.socket.remote_endpoint();
-        fmt::print(stderr, "Disconnected ({}:{})\n",
+        fmt::print(
+            stderr,
+            "Disconnected ({}:{})\n",
             ep.address().to_string(),
-            ep.port());
-        EventManager::send(BackendEvent{
-            PeerDisconnected{}
-        });
+            ep.port()
+        );
+        EventManager::send(BackendEvent{ PeerDisconnected{} });
     }
 
     awaitable<void> start() {
@@ -61,24 +60,21 @@ class PeerSession : public std::enable_shared_from_this<PeerSession> {
                 auto packet = co_await Packet::deserialize(m_connection.socket);
                 const auto ep = m_connection.socket.remote_endpoint();
                 auto from = m_connection.name.value_or(
-                    fmt::format("{}:{}", 
-                        ep.address().to_string(),
-                        ep.port())
+                    fmt::format("{}:{}", ep.address().to_string(), ep.port())
                 );
-                const auto message = std::string(packet.msg, packet.size);
+                const auto& message = packet.text_message.text;
                 fmt::print(stderr, "{} > {}\n", from, message);
                 EventManager::send(BackendEvent{
-                    ReceiveMessage{from, message}
-                });
+                    ReceiveMessage{ from, message } });
             }
-
-        } catch (ConnectionClosed&) {
+        }
+        catch (ConnectionClosed&) {
             // fmt::print(stderr, "ConnectionClosed\n");
         }
         // fmt::print(stderr, "reader() OUT\n");
     }
 
-  private:
+private:
     PeerConnection m_connection;
     ConnectionTable& m_connection_table_ref;
 };
