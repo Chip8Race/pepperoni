@@ -140,13 +140,16 @@ struct SetName {
 struct Packet : public Variant<TextMessage, SetName> {
     using Variant<TextMessage, SetName>::Variant;
 
-    static constexpr Packet make_message(std::string&& msg) {
-        // Packet res{ .message_type = MessageType::TextMessage,
-        //             .text_message{ .size = std::uint32_t(msg.size()),
-        //                            .text = std::move(msg) } };
-
+    static constexpr Packet text_message(std::string&& msg) {
+        // TODO: name needs to have size < std::uint32_t::max()
         return { TextMessage{ .size = std::uint32_t(msg.size()),
                               .text = std::move(msg) } };
+    }
+
+    static constexpr Packet set_name(std::string&& name) {
+        // TODO: name needs to have size < std::uint8_t::max()
+        return { SetName{ .size = std::uint8_t(name.size()),
+                          .name = std::move(name) } };
     }
 
     template<typename SyncWriteStream>

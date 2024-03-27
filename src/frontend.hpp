@@ -28,8 +28,9 @@ class Frontend : public EventListener<Frontend, BackendEvent> {
 
 public:
     // Ctor
-    Frontend()
-        : m_input_component(Input(&m_input_message, "Write something"))
+    Frontend(std::string&& name)
+        : m_client_name(std::move(name))
+        , m_input_component(Input(&m_input_message, "Write something"))
         , m_component(Container::Vertical({
               m_input_component,
           })) {
@@ -80,11 +81,10 @@ public:
             return true;
         }
         else if (event == ftxui::Event::Return) {
-            // FrontendEvent tmp{ SendMessage{} };
             EventManager::send(FrontendEvent{ SendMessage{ m_input_message } });
             auto current_epoch = std::time(nullptr);
             m_history.emplace_back(
-                "Jojo",
+                m_client_name,
                 std::move(m_input_message),
                 std::move(*std::localtime(&current_epoch))
             );
@@ -118,6 +118,7 @@ public:
 
 private:
     std::string m_input_message;
+    std::string m_client_name;
     std::vector<Msg> m_history = {};
     Component m_input_component;
     Component m_component;

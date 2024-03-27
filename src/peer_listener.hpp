@@ -5,10 +5,8 @@
 #include "peer_table.hpp"
 
 #include <asio/read_until.hpp>
-#include <barrier>
-#include <future>
-#include <iostream>
 #include <memory>
+#include <optional>
 
 namespace peppe {
 
@@ -23,42 +21,37 @@ public:
     ~PeerListener() = default;
 
     void set_port(asio::ip::port_type port) { m_port = port; }
+    void set_client_name(const std::string& name) { m_client_name = name; }
 
     void on_event(const FrontendEvent& event) override {
         event.match(
             [this](const SendMessage& sm) {
                 m_connection_table.send_all(
-                    Packet::make_message(std::string(sm.message))
+                    Packet::text_message(std::string(sm.message))
                 );
             },
             [](const Terminate& t) {}
         );
     }
 
-    awaitable<void> connect_to_peer(
-        tcp::socket&& socket,
-        tcp::endpoint&& endpoint,
-        std::string&& name
-    ) {
+    awaitable<void>
+    connect_to_peer(tcp::socket&& socket, tcp::endpoint&& endpoint) {
         // fmt::print(stderr, "connect_to_peer() IN\n");
         auto [error] =
             co_await socket.async_connect(endpoint, use_nothrow_awaitable);
         if (error) {
-            // fmt::print(stderr, "connect_to_peer() OUT ({})\n",
             // error.message());
             co_return;
         }
 
         auto self_shared = std::make_shared<PeerSession>(
-            m_connection_table, std::move(socket), std::move(name)
+            m_connection_table, std::move(socket), m_client_name
         );
         co_await self_shared->start();
-        // fmt::print(stderr, "connect_to_peer() OUT\n");
         co_return;
     }
 
     awaitable<void> connect_to_peers() {
-        // fmt::print(stderr, "connect_to_peers() IN\n");
 
         if (m_initial_peers.size() > 0) {
             for (auto& peer : m_initial_peers) {
@@ -73,14 +66,11 @@ public:
                 //     connect_to_peer(std::move(tmp.value()),
                 //     std::move(endpoint)), detached);
                 co_await connect_to_peer(
-                    std::move(socket),
-                    std::move(endpoint),
-                    std::string(peer.name)
+                    std::move(socket), std::move(endpoint)
                 );
             }
         }
 
-        // fmt::print(stderr, "connect_to_peers() OUT\n");
         co_return;
     }
 
@@ -94,7 +84,7 @@ public:
         while (true) {
             auto socket = co_await acceptor.async_accept(use_awaitable);
             auto self_shared = std::make_shared<PeerSession>(
-                m_connection_table, std::move(socket)
+                m_connection_table, std::move(socket), m_client_name
             );
             co_spawn(socket.get_executor(), self_shared->start(), detached);
         }
@@ -102,6 +92,7 @@ public:
 
 private:
     asio::io_context& m_io_context;
+    std::optional<std::string> m_client_name = std::nullopt;
     asio::ip::port_type m_port = 2501;
     ConnectionTable m_connection_table;
     PeerTable m_initial_peers;

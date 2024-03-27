@@ -6,7 +6,6 @@
 namespace peppe {
 
 struct Peer {
-    std::string name;
     asio::ip::address address;
     int port;
 };

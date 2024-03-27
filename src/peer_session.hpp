@@ -2,6 +2,7 @@
 
 #include "connection_table.hpp"
 #include "events.hpp"
+#include "fmt/base.h"
 #include "message.hpp"
 
 #include <asio/use_future.hpp>
@@ -17,9 +18,9 @@ public:
     PeerSession(
         ConnectionTable& conn_table,
         tcp::socket socket,
-        std::optional<std::string>&& name = std::nullopt
+        const std::optional<std::string>& client_name_opt
     )
-        : m_connection{ std::move(name), std::move(socket) }
+        : m_connection{ std::nullopt, std::move(socket) }
         , m_connection_table_ref(conn_table) {
         m_connection_table_ref.add(&m_connection);
         const auto ep = m_connection.socket.remote_endpoint();
@@ -27,6 +28,14 @@ public:
             stderr, "Connected ({}:{})\n", ep.address().to_string(), ep.port()
         );
         EventManager::send(BackendEvent{ PeerConnected{} });
+
+        // When the session starts, the first packet sent is set name
+        if (client_name_opt.has_value()) {
+        }
+        auto set_name_packet =
+            Packet::set_name(std::string(client_name_opt.value()));
+        set_name_packet.serialize(m_connection.socket);
+        fmt::print(stderr, "Sent SetName\n");
     }
 
     // Dtor
@@ -65,9 +74,12 @@ public:
 
                 packet.match(
                     [&from](TextMessage& text_msg) {
-                        fmt::print(stderr, "{} > {}\n", from, text_msg.text);
+                        fmt::print(stderr, "'{}' > {}\n", from, text_msg.text);
                         EventManager::send(BackendEvent{
                             ReceiveMessage{ from, text_msg.text } });
+                    },
+                    [this](SetName& set_name) {
+                        m_connection.name = set_name.name;
                     },
                     // Default case
                     [](auto&&) {}

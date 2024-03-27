@@ -38,12 +38,16 @@ struct ReceiveMessage {
     std::string message;
 };
 
+struct SetPeerName {
+    std::string name;
+};
+
 struct PeerConnected {};
 
 struct PeerDisconnected {};
 
 using BackendEvent =
-    CompoundEvent<ReceiveMessage, PeerConnected, PeerDisconnected>;
+    CompoundEvent<ReceiveMessage, SetPeerName, PeerConnected, PeerDisconnected>;
 
 struct SendMessage {
     std::string message;

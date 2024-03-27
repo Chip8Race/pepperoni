@@ -25,12 +25,13 @@ int main(int argc, const char* argv[]) {
     // Launch input handler
     const int num_threads_hint = int(std::thread::hardware_concurrency());
     asio::io_context io_context(num_threads_hint);
-    auto frontend = Frontend();
+    auto frontend = Frontend(std::string(config.name));
     std::jthread frontend_thread([&frontend] { frontend.start(); });
 
     // Launch peer listener
     PeerListener peer_listener(io_context, std::move(config.peer_table));
     peer_listener.set_port(config.port);
+    peer_listener.set_client_name(config.name);
     co_spawn(io_context, peer_listener.listener(), detached);
 
     // Setup signal handlers and run async event loop
