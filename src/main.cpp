@@ -43,26 +43,19 @@ int main(int argc, const char* argv[]) {
 
 // #include <asio/ip/address.hpp>
 // #include <fmt/core.h>
+// #include <variant>
 // // #include <ftxui/component/screen_interactive.hpp>
 
 // #include "config.hpp"
 // #include "frontend.hpp"
 
+// #include "message.hpp"
+
 // int main() {
-//     // peppe::Frontend{}.start();
-//     auto config_opt = peppe::Config::load_toml("config.toml");
-//     if (config_opt) {
-//         auto& config = config_opt.value();
-//         fmt::print("name: '{}'\n", config.name);
-//         fmt::print("port: '{}'\n", config.port);
-//         fmt::print("peers:\n");
-//         for (const auto& peer : config.peer_table) {
-//             fmt::print(
-//                 "  ip/port: '{}:{}'\n", peer.address.to_string(), peer.port
-//             );
-//         }
-//     }
-//     else {
-//         fmt::print("Couldn't load config!\n");
-//     }
+//     using namespace peppe;
+//     Packet msg = TextMessage{};
+//     msg.match([](TextMessage& text_msg) { fmt::print("Is TextMessage\n"); }
+//               // [](auto&&) {}
+//     );
+//     // std::visit()
 // }

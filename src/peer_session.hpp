@@ -6,6 +6,8 @@
 
 #include <asio/use_future.hpp>
 #include <fmt/core.h>
+#include <type_traits>
+#include <variant>
 
 namespace peppe {
 
@@ -49,12 +51,10 @@ public:
             detached
         );
 
-        // fmt::print(stderr, "start() OUT\n");
         co_return;
     }
 
     awaitable<void> reader() {
-        // fmt::print(stderr, "reader() IN\n");
         try {
             while (true) {
                 auto packet = co_await Packet::deserialize(m_connection.socket);
@@ -62,16 +62,21 @@ public:
                 auto from = m_connection.name.value_or(
                     fmt::format("{}:{}", ep.address().to_string(), ep.port())
                 );
-                const auto& message = packet.text_message.text;
-                fmt::print(stderr, "{} > {}\n", from, message);
-                EventManager::send(BackendEvent{
-                    ReceiveMessage{ from, message } });
+
+                packet.match(
+                    [&from](TextMessage& text_msg) {
+                        fmt::print(stderr, "{} > {}\n", from, text_msg.text);
+                        EventManager::send(BackendEvent{
+                            ReceiveMessage{ from, text_msg.text } });
+                    },
+                    // Default case
+                    [](auto&&) {}
+                );
             }
         }
         catch (ConnectionClosed&) {
             // fmt::print(stderr, "ConnectionClosed\n");
         }
-        // fmt::print(stderr, "reader() OUT\n");
     }
 
 private:

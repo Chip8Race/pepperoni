@@ -10,13 +10,22 @@ template<class... Ts>
 struct overloaded : Ts... {
     using Ts::operator()...;
 };
+// explicit deduction guide (not needed as of C++20)
+template<class... Ts>
+overloaded(Ts...) -> overloaded<Ts...>;
 
 namespace peppe {
 
 template<typename... V>
 struct Variant : public std::variant<V...> {
+    using std::variant<V...>::variant;
     template<typename... F>
     void match(F&&... funcs) const {
+        std::visit(overloaded{ std::forward<F>(funcs)... }, *this);
+    }
+
+    template<typename... F>
+    void match(F&&... funcs) {
         std::visit(overloaded{ std::forward<F>(funcs)... }, *this);
     }
 };

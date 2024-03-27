@@ -28,7 +28,7 @@ public:
         event.match(
             [this](const SendMessage& sm) {
                 m_connection_table.send_all(
-                    Packet::message(std::string(sm.message))
+                    Packet::make_message(std::string(sm.message))
                 );
             },
             [](const Terminate& t) {}
