@@ -3,7 +3,7 @@
 Backend:
 - [ ] Better serialization
 - Implement all protocol messages and behaviour
-    - [ ] Set name
+    - [x] Set name
     - [ ] Peer discovery
 - [ ] Create more exceptions and improve handling of them
 - [ ] Refactor Code

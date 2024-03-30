@@ -1,6 +1,8 @@
 #pragma once
 
+#include "asio/ip/address_v4.hpp"
 #include "fmt/base.h"
+#include <array>
 #include <asio/experimental/as_tuple.hpp>
 #include <asio/experimental/awaitable_operators.hpp>
 #include <asio/ip/tcp.hpp>
@@ -95,27 +97,25 @@ struct SetName {
             asio::buffer(&result.size, sizeof(std::uint8_t)),
             use_nothrow_awaitable
         );
+        if (err1) {
+            throw ConnectionClosed();
+        }
 
         // Convert from network endianess (big endian) to host
         // endianess (little endian)
         result.size = peppe::reverse_bytes(result.size);
 
-        if (err1) {
-            throw ConnectionClosed();
-        }
-
-        result.name.reserve(result.size);
-
         // 2. Read 'name' from stream
-        // NOTE: Coroutines still don't support alloca arrays (char[dynsize])
-        char* tmp = new char[result.size];
+        // Allocate necessary space for the name
+        result.name.resize(result.size);
         auto [err2, len2] = co_await asio::async_read(
-            stream, asio::buffer(tmp, result.size), use_nothrow_awaitable
+            stream,
+            asio::buffer(result.name.data(), result.size),
+            use_nothrow_awaitable
         );
         if (err2) {
             throw ConnectionClosed();
         }
-        result.name.assign(tmp, result.size);
 
         co_return result;
     }
@@ -137,8 +137,109 @@ struct SetName {
     }
 };
 
-struct Packet : public Variant<TextMessage, SetName> {
-    using Variant<TextMessage, SetName>::Variant;
+using Ipv4Bytes = asio::ip::address_v4::bytes_type;
+using Ipv6Bytes = asio::ip::address_v6::bytes_type;
+
+struct PeerDiscovery {
+
+    static constexpr auto msg_type = MessageType::PeerDiscoveryType;
+    std::uint8_t count_ipv4;
+    std::uint8_t count_ipv6;
+    std::vector<Ipv4Bytes> ipv4_addresses;
+    std::vector<Ipv6Bytes> ipv6_addresses;
+
+    template<typename AsyncReadStream>
+    static asio::awaitable<PeerDiscovery> read(AsyncReadStream& stream) {
+        PeerDiscovery result;
+
+        // 1. Read 'count_ipv4' from stream
+        auto [err1, len1] = co_await asio::async_read(
+            stream,
+            asio::buffer(&result.count_ipv4, sizeof(std::uint8_t)),
+            use_nothrow_awaitable
+        );
+        if (err1) {
+            throw ConnectionClosed();
+        }
+
+        // 2. Read 'count_ipv6' from stream
+        auto [err2, len2] = co_await asio::async_read(
+            stream,
+            asio::buffer(&result.count_ipv6, sizeof(std::uint8_t)),
+            use_nothrow_awaitable
+        );
+        if (err2) {
+            throw ConnectionClosed();
+        }
+
+        // 3. Read 'ipv4_addresses' from stream
+        result.ipv4_addresses.resize(result.count_ipv4);
+        auto [err3, len3] = co_await asio::async_read(
+            stream,
+            asio::buffer(
+                result.ipv4_addresses.data(),
+                sizeof(Ipv4Bytes) * result.count_ipv4
+            ),
+            use_nothrow_awaitable
+        );
+        if (err3) {
+            throw ConnectionClosed();
+        }
+        // TODO: Figure out if I need to revert the bytes here
+
+        // 4. Read 'ipv6_addresses' from stream
+        result.ipv6_addresses.resize(result.count_ipv6);
+        auto [err4, len4] = co_await asio::async_read(
+            stream,
+            asio::buffer(
+                result.ipv6_addresses.data(),
+                sizeof(Ipv6Bytes) * result.count_ipv6
+            ),
+            use_nothrow_awaitable
+        );
+        if (err4) {
+            throw ConnectionClosed();
+        }
+        // TODO: Figure out if I need to revert the bytes here
+
+        co_return result;
+    }
+
+    template<typename SyncWriteStream>
+    void write(SyncWriteStream& stream) const {
+        fmt::print(stderr, "Write Ipv4's:\n");
+        for (const auto& address : ipv4_addresses) {
+            fmt::print(
+                stderr,
+                "{}.{}.{}.{}\n",
+                address[0],
+                address[1],
+                address[2],
+                address[3]
+            );
+        }
+        std::vector<asio::const_buffer> packet_data{
+            asio::buffer(&msg_type, sizeof(std::uint8_t)),
+            asio::buffer(&count_ipv4, sizeof(std::uint8_t)),
+            asio::buffer(&count_ipv6, sizeof(std::uint8_t)),
+            asio::buffer(
+                ipv4_addresses.data(), sizeof(Ipv4Bytes) * ipv4_addresses.size()
+            ),
+            asio::buffer(
+                ipv6_addresses.data(), sizeof(Ipv6Bytes) * ipv6_addresses.size()
+            )
+        };
+
+        asio::error_code err;
+        asio::write(stream, packet_data, err);
+        if (err) {
+            throw ConnectionClosed();
+        }
+    }
+};
+
+struct Packet : public Variant<TextMessage, SetName, PeerDiscovery> {
+    using Variant<TextMessage, SetName, PeerDiscovery>::Variant;
 
     static constexpr Packet text_message(std::string&& msg) {
         // TODO: name needs to have size < std::uint32_t::max()
@@ -147,9 +248,22 @@ struct Packet : public Variant<TextMessage, SetName> {
     }
 
     static constexpr Packet set_name(std::string&& name) {
-        // TODO: name needs to have size < std::uint8_t::max()
+        // TODO: name needs to have size < std::uint8_t::max() (implement
+        // security checks)
         return { SetName{ .size = std::uint8_t(name.size()),
                           .name = std::move(name) } };
+    }
+
+    static constexpr Packet peer_discovery(
+        std::vector<Ipv4Bytes>&& ipv4_addresses,
+        std::vector<Ipv6Bytes>&& ipv6_addresses
+    ) {
+
+        return { PeerDiscovery{
+            .count_ipv4 = std::uint8_t(ipv4_addresses.size()),
+            .count_ipv6 = std::uint8_t(ipv6_addresses.size()),
+            .ipv4_addresses = std::move(ipv4_addresses),
+            .ipv6_addresses = std::move(ipv6_addresses) } };
     }
 
     template<typename SyncWriteStream>
@@ -162,15 +276,14 @@ struct Packet : public Variant<TextMessage, SetName> {
 
     template<typename AsyncReadStream>
     static asio::awaitable<Packet> deserialize(AsyncReadStream& stream) {
-
         MessageType message_type;
-        auto [err1, len1] = co_await asio::async_read(
+        auto [err, len] = co_await asio::async_read(
             stream,
             asio::buffer(&message_type, sizeof(MessageType)),
             use_nothrow_awaitable
         );
 
-        if (err1) {
+        if (err) {
             throw ConnectionClosed();
         }
 
@@ -185,9 +298,13 @@ struct Packet : public Variant<TextMessage, SetName> {
                 co_return result;
                 break;
             }
+            case MessageType::PeerDiscoveryType: {
+                Packet result = co_await PeerDiscovery::read(stream);
+                co_return result;
+                break;
+            }
             default: {
                 throw ConnectionClosed();
-                break;
             }
         }
     }

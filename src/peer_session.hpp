@@ -31,11 +31,15 @@ public:
 
         // When the session starts, the first packet sent is set name
         if (client_name_opt.has_value()) {
+            Packet::set_name(std::string(client_name_opt.value()))
+                .serialize(m_connection.socket);
+            fmt::print(stderr, "Sent SetName\n");
         }
-        auto set_name_packet =
-            Packet::set_name(std::string(client_name_opt.value()));
-        set_name_packet.serialize(m_connection.socket);
-        fmt::print(stderr, "Sent SetName\n");
+
+        // Also send known peers
+        Packet::peer_discovery({ Ipv4Bytes{ 1, 2, 3, 4 } }, {})
+            .serialize(m_connection.socket);
+        fmt::print(stderr, "Sent PeerDiscovery\n");
     }
 
     // Dtor
@@ -80,6 +84,24 @@ public:
                     },
                     [this](SetName& set_name) {
                         m_connection.name = set_name.name;
+                    },
+                    [](PeerDiscovery& peer_discovery) {
+                        fmt::print(
+                            stderr,
+                            "IPv4 Addresses ({}):\n",
+                            peer_discovery.ipv4_addresses.size()
+                        );
+                        for (const auto& address :
+                             peer_discovery.ipv4_addresses) {
+                            fmt::print(
+                                stderr,
+                                "{}.{}.{}.{}\n",
+                                address[0],
+                                address[1],
+                                address[2],
+                                address[3]
+                            );
+                        }
                     },
                     // Default case
                     [](auto&&) {}
