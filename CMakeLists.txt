@@ -51,7 +51,7 @@ FetchContent_MakeAvailable(tomlplusplus)
 
 ################################## Main Target ##################################
 file(GLOB PEPPERONI_SOURCES
-    "src/main.cpp"
+    "src/**.cpp"
 )
 set(PEPPERONI_INCLUDE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/src)
 add_executable(PepperoniBin ${PEPPERONI_SOURCES})
@@ -75,11 +75,11 @@ target_compile_definitions(PepperoniBin
 ################################## Mold Linker ##################################
 find_program(MOLD_EXECUTABLE "mold")
 
-if(MOLD_EXECUTABLE)
-    message(STATUS "Found mold linker: ${MOLD_EXECUTABLE}")
-    # TODO: Missing support for msvc
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fuse-ld=mold")
-endif()
+# if(MOLD_EXECUTABLE)
+#     message(STATUS "Found mold linker: ${MOLD_EXECUTABLE}")
+#     # TODO: Missing support for msvc
+#     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fuse-ld=mold")
+# endif()
 
 ############################ Link-Time-Optimization #############################
 include(CheckIPOSupported)

@@ -1,8 +1,11 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
+#include <bit>
 #include <cstdint>
 #include <string_view>
+#include <type_traits>
 #include <variant>
 #include <vector>
 
@@ -31,10 +34,11 @@ struct Variant : public std::variant<V...> {
 };
 
 template<typename T>
-T reverse_bytes(T x) {
-    char* const ptr = reinterpret_cast<char*>(&x);
-    std::reverse(ptr, ptr + sizeof(T));
-    return *reinterpret_cast<T*>(ptr);
+    requires std::is_arithmetic_v<T>
+[[nodiscard]] T reverse_bytes(T number) {
+    auto data = std::bit_cast<std::array<char, sizeof(T)>>(number);
+    std::ranges::reverse(data);
+    return std::bit_cast<T>(data);
 }
 
 [[nodiscard]] constexpr std::vector<std::string_view>

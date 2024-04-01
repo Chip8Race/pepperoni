@@ -1,5 +1,6 @@
 #pragma once
 
+#include "asio/ip/address.hpp"
 #include "connection_table.hpp"
 #include "events.hpp"
 #include "fmt/base.h"
@@ -7,8 +8,7 @@
 
 #include <asio/use_future.hpp>
 #include <fmt/core.h>
-#include <type_traits>
-#include <variant>
+#include <ranges>
 
 namespace peppe {
 
@@ -32,13 +32,27 @@ public:
         // When the session starts, the first packet sent is set name
         if (client_name_opt.has_value()) {
             Packet::set_name(std::string(client_name_opt.value()))
-                .serialize(m_connection.socket);
+                .write(m_connection.socket);
             fmt::print(stderr, "Sent SetName\n");
         }
 
         // Also send known peers
-        Packet::peer_discovery({ Ipv4Bytes{ 1, 2, 3, 4 } }, {})
-            .serialize(m_connection.socket);
+        auto known_peers = m_connection_table_ref.connected_peers();
+        auto ivp4_addresses_bytes =
+            known_peers |
+            std::views::filter([](const auto& addr) { return addr.is_v4(); }) |
+            std::views::transform([](const auto& addr) {
+                return addr.to_v4().to_bytes();
+            });
+        auto ivp6_addresses_bytes =
+            known_peers |
+            std::views::filter([](const auto& addr) { return addr.is_v6(); }) |
+            std::views::transform([](const auto& addr) {
+                return addr.to_v6().to_bytes();
+            });
+
+        Packet::peer_discovery(ivp4_addresses_bytes, ivp6_addresses_bytes)
+            .write(m_connection.socket);
         fmt::print(stderr, "Sent PeerDiscovery\n");
     }
 
@@ -56,8 +70,6 @@ public:
     }
 
     awaitable<void> start() {
-        // fmt::print(stderr, "start() IN\n");
-
         co_spawn(
             m_connection.socket.get_executor(),
             [self = shared_from_this()] { return self->reader(); },
@@ -70,7 +82,7 @@ public:
     awaitable<void> reader() {
         try {
             while (true) {
-                auto packet = co_await Packet::deserialize(m_connection.socket);
+                auto packet = co_await Packet::read(m_connection.socket);
                 const auto ep = m_connection.socket.remote_endpoint();
                 auto from = m_connection.name.value_or(
                     fmt::format("{}:{}", ep.address().to_string(), ep.port())

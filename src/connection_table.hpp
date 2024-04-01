@@ -1,5 +1,6 @@
 #pragma once
 
+#include "asio/ip/address.hpp"
 #include <asio/awaitable.hpp>
 #include <asio/co_spawn.hpp>
 #include <asio/connect.hpp>
@@ -15,6 +16,7 @@
 #include <algorithm>
 #include <chrono>
 #include <fmt/core.h>
+#include <ranges>
 
 using asio::ip::tcp;
 using namespace asio::ip;
@@ -60,26 +62,29 @@ public:
     // Dtor
     ~ConnectionTable() = default;
 
+    std::ranges::view auto connected_peers() {
+        return std::views::transform(
+            m_connection_table,
+            [](PeerConnection* conn) -> asio::ip::address {
+                return conn->socket.remote_endpoint().address();
+            }
+        );
+    }
+
     void remove(PeerConnection* conn) {
-        m_connection_table.remove_if([&conn](auto c) {
+        std::ranges::remove_if(m_connection_table, [&conn](auto c) {
             return conn->socket.local_endpoint() == c->socket.local_endpoint();
         });
     }
 
     void add(PeerConnection* conn) { m_connection_table.push_back(conn); }
 
-    // awaitable<void> send_all(Packet const& packet) {
-    //     for (auto* conn : m_connection_table) {
-    //         co_await packet.serialize(conn->socket);
-    //     }
-    // }
-
-    void send_all(const Packet& packet) {
+    void send_all(const Packet& packet) const {
         for (auto* conn : m_connection_table) {
-            packet.serialize(conn->socket);
+            packet.write(conn->socket);
         }
     }
 
 private:
-    std::list<PeerConnection*> m_connection_table;
+    std::vector<PeerConnection*> m_connection_table;
 };

@@ -60,7 +60,7 @@ public:
                 auto socket = tcp::socket(m_io_context, endpoint.protocol());
 
                 // TODO: Add a timeout to the connection attempt
-                // since I cant try to connect to all at once
+                // so I cant try to connect to all at once
                 // co_spawn(
                 //     m_io_context,
                 //     connect_to_peer(std::move(tmp.value()),

@@ -27,6 +27,7 @@ enum class MessageType : std::uint8_t {
 
 struct TextMessage {
     static constexpr auto msg_type = MessageType::TextMessageType;
+    // TODO: Size not needed
     std::uint32_t size;
     std::string text;
 
@@ -40,27 +41,24 @@ struct TextMessage {
             asio::buffer(&result.size, sizeof(std::uint32_t)),
             use_nothrow_awaitable
         );
-
         // Convert from network endianess (big endian) to host
         // endianess (little endian)
         result.size = peppe::reverse_bytes(result.size);
-
         if (err1) {
             throw ConnectionClosed();
         }
 
-        result.text.reserve(result.size);
-
         // 2. Read 'text' from stream
-        // NOTE: Coroutines still don't support alloca arrays (char[dynsize])
-        char* tmp = new char[result.size];
+        // Allocate necessary space for the 'text'
+        result.text.resize(result.size);
         auto [err2, len2] = co_await asio::async_read(
-            stream, asio::buffer(tmp, result.size), use_nothrow_awaitable
+            stream,
+            asio::buffer(result.text.data(), result.size),
+            use_nothrow_awaitable
         );
         if (err2) {
             throw ConnectionClosed();
         }
-        result.text.assign(tmp, result.size);
 
         co_return result;
     }
@@ -106,7 +104,7 @@ struct SetName {
         result.size = peppe::reverse_bytes(result.size);
 
         // 2. Read 'name' from stream
-        // Allocate necessary space for the name
+        // Allocate necessary space for the 'name'
         result.name.resize(result.size);
         auto [err2, len2] = co_await asio::async_read(
             stream,
@@ -143,8 +141,6 @@ using Ipv6Bytes = asio::ip::address_v6::bytes_type;
 struct PeerDiscovery {
 
     static constexpr auto msg_type = MessageType::PeerDiscoveryType;
-    std::uint8_t count_ipv4;
-    std::uint8_t count_ipv6;
     std::vector<Ipv4Bytes> ipv4_addresses;
     std::vector<Ipv6Bytes> ipv6_addresses;
 
@@ -153,9 +149,10 @@ struct PeerDiscovery {
         PeerDiscovery result;
 
         // 1. Read 'count_ipv4' from stream
+        std::uint8_t count_ipv4;
         auto [err1, len1] = co_await asio::async_read(
             stream,
-            asio::buffer(&result.count_ipv4, sizeof(std::uint8_t)),
+            asio::buffer(&count_ipv4, sizeof(std::uint8_t)),
             use_nothrow_awaitable
         );
         if (err1) {
@@ -163,9 +160,10 @@ struct PeerDiscovery {
         }
 
         // 2. Read 'count_ipv6' from stream
+        std::uint8_t count_ipv6;
         auto [err2, len2] = co_await asio::async_read(
             stream,
-            asio::buffer(&result.count_ipv6, sizeof(std::uint8_t)),
+            asio::buffer(&count_ipv6, sizeof(std::uint8_t)),
             use_nothrow_awaitable
         );
         if (err2) {
@@ -173,12 +171,11 @@ struct PeerDiscovery {
         }
 
         // 3. Read 'ipv4_addresses' from stream
-        result.ipv4_addresses.resize(result.count_ipv4);
+        result.ipv4_addresses.resize(count_ipv4);
         auto [err3, len3] = co_await asio::async_read(
             stream,
             asio::buffer(
-                result.ipv4_addresses.data(),
-                sizeof(Ipv4Bytes) * result.count_ipv4
+                result.ipv4_addresses.data(), sizeof(Ipv4Bytes) * count_ipv4
             ),
             use_nothrow_awaitable
         );
@@ -188,12 +185,11 @@ struct PeerDiscovery {
         // TODO: Figure out if I need to revert the bytes here
 
         // 4. Read 'ipv6_addresses' from stream
-        result.ipv6_addresses.resize(result.count_ipv6);
+        result.ipv6_addresses.resize(count_ipv6);
         auto [err4, len4] = co_await asio::async_read(
             stream,
             asio::buffer(
-                result.ipv6_addresses.data(),
-                sizeof(Ipv6Bytes) * result.count_ipv6
+                result.ipv6_addresses.data(), sizeof(Ipv6Bytes) * count_ipv6
             ),
             use_nothrow_awaitable
         );
@@ -218,6 +214,8 @@ struct PeerDiscovery {
                 address[3]
             );
         }
+        std::uint8_t count_ipv4 = ipv4_addresses.size();
+        std::uint8_t count_ipv6 = ipv6_addresses.size();
         std::vector<asio::const_buffer> packet_data{
             asio::buffer(&msg_type, sizeof(std::uint8_t)),
             asio::buffer(&count_ipv4, sizeof(std::uint8_t)),
@@ -255,19 +253,18 @@ struct Packet : public Variant<TextMessage, SetName, PeerDiscovery> {
     }
 
     static constexpr Packet peer_discovery(
-        std::vector<Ipv4Bytes>&& ipv4_addresses,
-        std::vector<Ipv6Bytes>&& ipv6_addresses
+        std::ranges::input_range auto&& ipv4_addresses,
+        std::ranges::input_range auto&& ipv6_addresses
     ) {
-
         return { PeerDiscovery{
-            .count_ipv4 = std::uint8_t(ipv4_addresses.size()),
-            .count_ipv6 = std::uint8_t(ipv6_addresses.size()),
-            .ipv4_addresses = std::move(ipv4_addresses),
-            .ipv6_addresses = std::move(ipv6_addresses) } };
+            .ipv4_addresses =
+                std::vector(ipv4_addresses.begin(), ipv4_addresses.end()),
+            .ipv6_addresses =
+                std::vector(ipv6_addresses.begin(), ipv6_addresses.end()) } };
     }
 
     template<typename SyncWriteStream>
-    void serialize(SyncWriteStream& stream) const {
+    void write(SyncWriteStream& stream) const {
         // Create concept to visit and ensure read and write
         // member functions.
         match([&stream](auto&& var) { var.write(stream); });
@@ -275,8 +272,8 @@ struct Packet : public Variant<TextMessage, SetName, PeerDiscovery> {
     }
 
     template<typename AsyncReadStream>
-    static asio::awaitable<Packet> deserialize(AsyncReadStream& stream) {
-        MessageType message_type;
+    static asio::awaitable<Packet> read(AsyncReadStream& stream) {
+        [[clang::uninitialized]] MessageType message_type;
         auto [err, len] = co_await asio::async_read(
             stream,
             asio::buffer(&message_type, sizeof(MessageType)),
